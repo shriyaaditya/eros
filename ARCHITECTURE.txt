@@ -1,0 +1,105 @@
+SYSTEM ARCHITECTURE: EROS / PROTEUS AI ECOSYSTEM
+===================================================
+
+1. SYSTEM OVERVIEW
+------------------
+Eros (Proteus) is an enterprise-grade omnichannel retail platform powered by multi-agent AI orchestration, real-time computer vision inference, Model Context Protocol (MCP) tooling, and stateful session synchronization. The platform seamlessly bridges digital (web app, conversational messaging) and physical (in-store smart kiosks) shopping touchpoints.
+
+
+2. HIGH-LEVEL ARCHITECTURE DIAGRAM
+-----------------------------------
+
++-----------------------------------------------------------------------------------+
+|                                  CLIENT LAYER                                     |
+|  [ WhatsApp / Twilio ]        [ React + Vite Web App ]     [ Smart Kiosk Terminal ] |
++-----------------------------------------------------------------------------------+
+                                          |
+                                          v
++-----------------------------------------------------------------------------------+
+|                             GATEWAY & MIDDLEWARE LAYER                            |
+|       FastAPI Gateway (main.py) | CORS Middleware | Webhook & Session Auth        |
++-----------------------------------------------------------------------------------+
+                                          |
+                                          v
++-----------------------------------------------------------------------------------+
+|                                AGENTIC AI CORE LAYER                              |
+|   Master Orchestrator Agent <---> MCP Tool Server (Pydantic Validation)           |
+|                                                                                   |
+|   Worker Agents:                                                                  |
+|     * Recommendation Agent (Gemini 2.0 API + Vector Embeddings)                   |
+|     * Inventory & Order Agent (Soft Locks & Safe Transfers)                       |
+|     * Size & Measurement Agent (Parametric Fit Algorithms)                        |
+|     * Virtual Try-On Inference Agent (PyTorch + OpenCV)                           |
+|                                                                                   |
+|   Resilience & Risk Engine (Exponential Backoff & Retries)                        |
++-----------------------------------------------------------------------------------+
+                                          |
+                                          v
++-----------------------------------------------------------------------------------+
+|                              DATA & PERSISTENCE LAYER                             |
+|         PostgreSQL (Relational DB)    |     Redis (TTL Locks & Session Store)       |
++-----------------------------------------------------------------------------------+
+
+
+3. CORE COMPONENT BREAKDOWN
+---------------------------
+
+A. API Gateway & Microservices (backend/)
+  * Framework: FastAPI (Python 3.11) with Uvicorn async worker threads.
+  * Endpoints: 25+ REST endpoints handling /api/recommendations, /api/virtual-tryon, /api/size/recommend, /api/instore-tryon/book, /api/cart/sync, /api/inventory/adjust, and /whatsapp/*.
+  * Security & Auth: Async HMAC SHA-256 signature verification for Twilio webhooks, temporary session JWT tokens, and step-up OTP authentication.
+
+B. Agentic AI Core & MCP Tooling (backend/agentic-core/)
+  * Master Agent: Uses structured intent classification to route user inputs to dedicated domain workers.
+  * Model Context Protocol (MCP): Standardizes tool definition, argument schema validation via Pydantic, and execution boundaries for external services.
+  * Domain Workers:
+      - Recommendation Agent: Combines vector embeddings and user historical profiles to generate hyper-personalized catalog items.
+      - Inventory & Order Agent: Executes soft-locks (600s TTL), stock availability checks across physical/digital locations, and automated safe-transfers.
+      - Size & Measurement Agent: Takes user body dimensions (chest, waist, hips, height) and fits parametric curves to output size recommendations with fit confidence scores.
+      - Virtual Try-On Agent: Coordinates image preprocessing and generative image-to-image synthesis pipelines for apparel overlay.
+
+C. Resilience & Risk Engine (backend/agentic-core/risk_engine/)
+  * Soft Reservations: Prevents stock race-conditions across concurrent kiosk & web checkouts by maintaining atomic TTL locks in Redis.
+  * Exponential Backoff & Retries: Wraps external LLM (Gemini) calls and database mutations in resilience decorators to tolerate transient network degradation.
+
+D. Omnichannel Session Handoff (client-apps/)
+  * Kiosk Terminal (client-apps/kiosk-app): In-store interactive client built for quick product browsing, physical try-on room bookings, and dynamic QR code generation.
+  * Web App (client-apps/web-app): React + TypeScript client providing full e-commerce checkout, voice product search, and live cart sync.
+  * Real-time Synchronization: Polling engine (2-second interval) coupled with WebSocket session registers to transfer live shopping carts from Kiosk to Mobile upon QR scanning.
+
+
+4. END-TO-END REQUEST & DATA FLOWS
+----------------------------------
+
+Flow 1: Conversational Shopping via WhatsApp
+  1. Customer sends WhatsApp message -> Twilio Webhook -> POST /whatsapp/webhook
+  2. FastAPI validates HMAC Signature & inspects Redis Session Store.
+  3. Master Agent classifies user query intent.
+  4. Recommendation Agent queries Gemini 2.0 API + PostgreSQL Product Catalog.
+  5. Response synthesized into concise WhatsApp message format and dispatched back via Twilio.
+
+Flow 2: Smart Kiosk Session Handoff to Mobile Web
+  1. Customer builds a cart on the In-Store Kiosk UI.
+  2. Kiosk requests a session token -> POST /api/session/register.
+  3. Kiosk renders a dynamic QR code encoding the session token URL.
+  4. Customer scans QR code with mobile phone -> Opens Mobile Web App.
+  5. Mobile Web App triggers POST /api/cart/sync.
+  6. Backend fetches session state from Redis -> Hydro-populates cart on Mobile Web App.
+
+Flow 3: AI Size Recommendation & Virtual Try-On
+  1. User uploads photo & body measurements on Web/Kiosk -> POST /api/size/recommend.
+  2. Size Agent runs parametric sizing heuristic -> Returns Recommended Size + Fit Confidence Score (%).
+  3. User selects "Virtual Try-On" -> POST /api/virtual-tryon.
+  4. Virtual Try-On Agent executes OpenCV image alignment & PyTorch model inference.
+  5. Generated image URL returned to client with soft-reservation created for selected size.
+
+
+5. TECHNOLOGY STACK & INFRASTRUCTURE
+------------------------------------
+  * Languages: Python 3.11, TypeScript, SQL
+  * Backend & APIs: FastAPI, Uvicorn, Pydantic v2, Asyncio, WebSockets
+  * AI / Machine Learning: Google Gemini 2.0 Flash, Model Context Protocol (MCP), PyTorch, OpenCV
+  * Frontend UI: React 18, TypeScript, Tailwind CSS, Vite, Lucide Icons
+  * Database & Caching: PostgreSQL (Relational & JSONB), Redis (TTL Lock Store & Sessions)
+  * DevOps & Infra: Docker, Docker-Compose, Bash Automation Scripts
+  * Integrations: Twilio WhatsApp Business API, Azure OpenAI (Optional Fallback)
